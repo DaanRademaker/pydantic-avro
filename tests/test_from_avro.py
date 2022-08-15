@@ -1,4 +1,14 @@
-from pydantic_avro.avro_to_pydantic import avsc_to_pydantic
+from pydantic_avro.avro_to_pydantic import avsc_to_pydantic, generate_imports
+
+
+def test_generate_imports():
+    unique_types = {"Optional", "float", "datetime", "date", "int", "List", "Dict", "UUID"}
+
+    all_imports = generate_imports(unique_types)
+
+    assert all_imports[0] == "from datetime import date, datetime"
+    assert all_imports[1] == "from typing import Dict, List, Optional"
+    assert all_imports[2] == "from uuid import UUID"
 
 
 def test_avsc_to_pydantic_empty():

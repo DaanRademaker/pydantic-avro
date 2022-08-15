@@ -1,5 +1,69 @@
 import json
-from typing import Optional, Union
+from typing import Iterable, Optional, Union, List
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Import:
+    which_from: str
+    which_import: str
+
+
+def get_import_from_type(type) -> List[Import]:
+    """Create a list of imports based on supported or required import types"""
+    imports = []
+    if "datetime" in type:
+        imports.append(Import("datetime", "datetime"))
+    elif "date" in type:
+        imports.append(Import("datetime", "date"))
+    elif "Dict" in type:
+        imports.append(Import("typing", "Dict"))
+    elif "List" in type:
+        imports.append(Import("typing", "List"))
+    elif "Optional" in type:
+        imports.append(Import("typing", "Optional"))
+    elif "UUID" in type:
+        imports.append(Import("uuid", "UUID"))
+
+    return imports
+
+
+def generate_import_strings(all_imports: Iterable[Import]) -> List[str]:
+    """Generates list of import strings"""
+    import_dict = {}
+
+    for entry in all_imports:
+        if entry.which_from in import_dict:
+            import_dict[entry.which_from].append(entry.which_import)
+        else:
+            import_dict[entry.which_from] = [entry.which_import]
+
+    import_strings = []
+
+    sorted_imports = dict(sorted(import_dict.items()))
+
+    for which_from, which_import in sorted_imports.items():
+        import_string = f"from {which_from} import {', '.join(sorted(which_import))}"
+        import_strings.append(import_string)
+
+    return import_strings
+
+
+def generate_imports(unique_types: dict) -> List[str]:
+    """
+    Gets import types and adds them to a unique set, this set is then used to generate
+    import strings
+    """
+    all_imports = set()
+    for type in unique_types:
+        imports = get_import_from_type(type)
+
+        if imports:
+            for entry in imports:
+                all_imports.add(entry)
+
+    all_imports = generate_import_strings(all_imports)
+    return all_imports
 
 
 def avsc_to_pydantic(schema: dict) -> str:
@@ -12,6 +76,7 @@ def avsc_to_pydantic(schema: dict) -> str:
         raise AttributeError("fields are required")
 
     classes = {}
+    unique_types = set()
 
     def get_python_type(t: Union[str, dict]) -> str:
         """Returns python type for given avro type"""
@@ -79,6 +144,7 @@ def avsc_to_pydantic(schema: dict) -> str:
         for field in schema["fields"]:
             n = field["name"]
             t = get_python_type(field["type"])
+            unique_types.add(t)
             default = field.get("default")
             if default is None:
                 current += f"    {n}: {t}\n"
@@ -93,16 +159,10 @@ def avsc_to_pydantic(schema: dict) -> str:
 
     record_type_to_pydantic(schema)
 
-    file_content = """
-from datetime import date, datetime, time
-from decimal import Decimal
-from typing import List, Optional, Dict
-from uuid import UUID
+    generate_imports(unique_types)
 
-from pydantic import BaseModel
-
-
-"""
+    file_content = "\n".join(generate_imports(unique_types)) + "\n\n"
+    file_content += "from pydantic import BaseModel \n\n"
     file_content += "\n\n".join(classes.values())
 
     return file_content
